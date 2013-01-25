@@ -2,7 +2,9 @@ AudioViz.Events = {
   PLAY: 'play',
   STOP: 'play',
   PROCESSED: 'processed',
-  LOADED: 'loaded'
+  LOADED: 'loaded',
+  SUCCESS: 'success',
+  FAILURE: 'failure'
 };
 
 AudioViz.EventPublisher = function() {
