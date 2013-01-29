@@ -55,19 +55,17 @@ AudioViz.Visualizer.prototype.create3DEnv = function() {
   // sphere and material
   this.mirroredMeshes = [];
   var sphereMaterial = new THREE.MeshBasicMaterial({ envMap: this.cubeCamera.renderTarget });
-
-  var mainSphere = new THREE.Mesh(new THREE.SphereGeometry(75, 60, 40), sphereMaterial);
-	this.scene.add(mainSphere);
-  this.mirroredMeshes.push(mainSphere);
     
 	this.group = new THREE.Object3D();
 	this.scene.add(this.group);
-    
-  for(var i = 0; i < 10; i++){
+
+	var angle = (Math.PI * 2) / 64;
+  for(var i = 0; i < 64; i++){
 	  var sphere = new THREE.Mesh(new THREE.SphereGeometry(10, 60, 40), sphereMaterial);
-    sphere.position.x = Math.random() * 200 - 100;
-    sphere.position.y = Math.random() * 200 - 100;
-    sphere.position.z = Math.random() * 200 - 100;
+    sphere.angle = (i * angle) - (Math.PI / 2);
+    sphere.position.x = Math.cos(sphere.angle) * 75;
+    sphere.position.y = Math.sin(sphere.angle) * 75;
+    sphere.position.z = 0;
     this.mirroredMeshes.push(sphere);
 	  this.group.add(sphere);
   }
@@ -101,19 +99,26 @@ AudioViz.Visualizer.prototype.render = function() {
   
   
   var byteData = this.audioTrack.getSpectrum();
+  var resolution = 128;
+  var mod = this.audioTrack.analyser.frequencyBinCount / resolution; 
+  var v = 0;
+  var newByteData = [];
   for(var i=0; i < this.audioTrack.analyser.frequencyBinCount; i++){
-    //this.canvasContext.fillRect(i,this.height, 1, -byteData[i] * 1.5);
+    if(i%mod != 0){
+      v = v + byteData[i]
+    }else{
+      newByteData.push( (v/mod) / 64 );
+      v = 0;
+    }
   }
   
-  var scale
+  var scale;
 	$.each(this.mirroredMeshes, function(i, sphere){
     if(byteData[500] > 0) {
-      sphere.scale.x = sphere.scale.y = sphere.scale.z = byteData[800] / 256;
+      sphere.scale.x = sphere.scale.y = sphere.scale.z = newByteData[i] + 0.05;
     }
     sphere.visible = false;
 	});
-
-  this.mirroredMeshes[0].scale.x = this.mirroredMeshes[0].scale.y = this.mirroredMeshes[0].scale.z = byteData[0] / 256;
   
 	this.cubeCamera.updateCubeMap( this.renderer, this.scene );
   
@@ -121,7 +126,8 @@ AudioViz.Visualizer.prototype.render = function() {
     sphere.visible = true;
 	});
   
-  this.group.rotation.y = this.group.rotation.y + 0.01;
+  this.group.rotation.y = this.group.rotation.y + 0.001;
+  this.group.rotation.z = this.group.rotation.z + 0.01;
   
   this.renderer.render(this.scene, this.camera);
 };
