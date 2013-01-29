@@ -5,6 +5,7 @@ AudioViz.Visualizer = function(el, audioTrack, userCam) {
   
   this.height = 500;
   this.width = 500;
+  this.resolution = 32;
 };
 
 AudioViz.Visualizer.prototype.start = function() {
@@ -54,20 +55,25 @@ AudioViz.Visualizer.prototype.create3DEnv = function() {
   
   // sphere and material
   this.mirroredMeshes = [];
-  var sphereMaterial = new THREE.MeshBasicMaterial({ envMap: this.cubeCamera.renderTarget });
+  var mirrorMaterial = new THREE.MeshBasicMaterial({ envMap: this.cubeCamera.renderTarget });
     
 	this.group = new THREE.Object3D();
 	this.scene.add(this.group);
 
-	var angle = (Math.PI * 2) / 64;
-  for(var i = 0; i < 64; i++){
-	  var sphere = new THREE.Mesh(new THREE.SphereGeometry(10, 60, 40), sphereMaterial);
-    sphere.angle = (i * angle) - (Math.PI / 2);
-    sphere.position.x = Math.cos(sphere.angle) * 75;
-    sphere.position.y = Math.sin(sphere.angle) * 75;
-    sphere.position.z = 0;
-    this.mirroredMeshes.push(sphere);
-	  this.group.add(sphere);
+  this.sphereMesh = new THREE.Mesh(new THREE.SphereGeometry(20, 60, 40), mirrorMaterial);
+	this.group.add(this.sphereMesh);
+  
+	var angle = (Math.PI * 2) / (this.resolution * 2);
+  for(var i = 0; i < this.resolution * 2; i++){
+	  //var mesh = new THREE.Mesh(new THREE.SphereGeometry(10, 60, 40), mirrorMaterial);
+    var mesh = new THREE.Mesh(new THREE.CubeGeometry(5, 5, 5), mirrorMaterial);
+    mesh.angle = (i * angle) - (Math.PI / 2);
+    mesh.position.x = Math.cos(mesh.angle) * 40;
+    mesh.position.y = Math.sin(mesh.angle) * 40;
+    mesh.position.z = 0;
+		mesh.rotation.z = mesh.angle
+    this.mirroredMeshes.push(mesh);
+	  this.group.add(mesh);
   }
   
   // light
@@ -99,40 +105,55 @@ AudioViz.Visualizer.prototype.render = function() {
   
   
   var byteData = this.audioTrack.getSpectrum();
-  var resolution = 128;
-  var mod = this.audioTrack.analyser.frequencyBinCount / resolution; 
+  var mod = this.audioTrack.analyser.frequencyBinCount / this.resolution; 
   var v = 0;
   var newByteData = [];
   for(var i=0; i < this.audioTrack.analyser.frequencyBinCount; i++){
     if(i%mod != 0){
       v = v + byteData[i]
     }else{
-      newByteData.push( (v/mod) / 64 );
+      newByteData.push( (v/mod) / 256 );
       v = 0;
     }
   }
   
   var scale;
-	$.each(this.mirroredMeshes, function(i, sphere){
-    if(byteData[500] > 0) {
-      sphere.scale.x = sphere.scale.y = sphere.scale.z = newByteData[i] + 0.05;
-    }
-    sphere.visible = false;
+  var mesh;
+  var that = this;
+  var value;
+  var totalAvg = 0;
+	$.each(newByteData, function(i, value){
+    value = newByteData[i];
+    totalAvg = totalAvg + value;
+    mesh = that.mirroredMeshes[i];
+    mesh.visible = false;
+    mesh.scale.x = mesh.scale.y = mesh.scale.z = value > 0 ? 0.5 + value * 2 : 1;
+      
+    mesh = that.mirroredMeshes[that.resolution * 2 - i - 1];
+    mesh.visible = false;
+    mesh.scale.x = mesh.scale.y = mesh.scale.z = value > 0 ? 0.5 + value * 2 : 1;
 	});
+  
+  this.sphereMesh.visible = false;
+  
+  this.sphereMesh.scale.x = this.sphereMesh.scale.y = this.sphereMesh.scale.z = 1 + (totalAvg / this.resolution);
   
 	this.cubeCamera.updateCubeMap( this.renderer, this.scene );
   
-	$.each(this.mirroredMeshes, function(i, sphere){
-    sphere.visible = true;
+  this.sphereMesh.visible = true;
+  
+	$.each(this.mirroredMeshes, function(i, mesh){
+    mesh.visible = true;
 	});
   
-  this.group.rotation.y = this.group.rotation.y + 0.001;
-  this.group.rotation.z = this.group.rotation.z + 0.01;
+  this.group.rotation.x = this.group.rotation.x + 0.005;
+  this.group.rotation.y = this.group.rotation.y + 0.005;
+  //this.group.rotation.z = this.group.rotation.z + 0.015;
   
   this.renderer.render(this.scene, this.camera);
 };
 
 AudioViz.Visualizer.prototype.onWindowResized = function( event ) {
 	this.renderer.setSize( window.innerWidth, window.innerHeight );
-	this.camera.projectionMatrix.makePerspective( 70, window.innerWidth / window.innerHeight, 1, 1100 );
+	this.camera.projectionMatrix.makePerspective( 50, window.innerWidth / window.innerHeight, 1, 1100 );
 }
