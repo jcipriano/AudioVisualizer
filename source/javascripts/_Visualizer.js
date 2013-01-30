@@ -5,7 +5,7 @@ AudioViz.Visualizer = function(el, audioTrack, userCam) {
   
   this.height = 500;
   this.width = 500;
-  this.resolution = 32;
+  this.resolution = 64;
   
 	this.lon = 0;
 	this.lat = 0;
@@ -33,9 +33,9 @@ AudioViz.Visualizer.prototype.create3DEnv = function() {
   this.domEl.append(this.renderer.domElement);
 	
   // light
-  var light = new THREE.PointLight( 0xFFFFFF, 1, 0 );
-  light.position.set( 0, 0, 25 );
-  this.scene.add( light );
+  //var light = new THREE.PointLight( 0xFF0000, 1, 0 );
+  //light.position.set( 0, 0, 25 );
+  //this.scene.add( light );
   
   // skybox
 	var textureCube = THREE.ImageUtils.loadTextureCube([
@@ -78,10 +78,10 @@ AudioViz.Visualizer.prototype.create3DEnv = function() {
   
 	var angle = (Math.PI * 2) / (this.resolution * 2);
   for(var i = 0; i < this.resolution * 2; i++){
-    var mesh = new THREE.Mesh(new THREE.CubeGeometry(5, 5, 5), mirrorMaterial );
+    var mesh = new THREE.Mesh(new THREE.CubeGeometry(5, 1, 5), mirrorMaterial );
     mesh.angle = (i * angle) - (Math.PI / 2);
-    mesh.position.x = Math.cos(mesh.angle) * 40;
-    mesh.position.y = Math.sin(mesh.angle) * 40;
+    mesh.position.x = Math.cos(mesh.angle) * 35;
+    mesh.position.y = Math.sin(mesh.angle) * 35;
     mesh.position.z = 0;
 		mesh.rotation.z = mesh.angle
     this.mirroredMeshes.push(mesh);
@@ -125,8 +125,8 @@ AudioViz.Visualizer.prototype.render = function() {
   this.camera.lookAt(this.scene.position);
   
   // move group
-  this.group.rotation.y = this.group.rotation.y + 0.005;
-  this.group.rotation.x = this.group.rotation.x + 0.005;
+  this.group.rotation.y = this.group.rotation.y - 0.005;
+  this.group.rotation.x = this.group.rotation.x - 0.005;
 
   // update reflection
   this.sphereMesh.visible = false; // off
