@@ -6,6 +6,12 @@ AudioViz.Visualizer = function(el, audioTrack, userCam) {
   this.height = 500;
   this.width = 500;
   this.resolution = 32;
+  
+	this.lon = 0;
+	this.lat = 0;
+	this.phi = 0;
+  
+  this.cameraDistance = 150;
 };
 
 AudioViz.Visualizer.prototype.start = function() {
@@ -15,16 +21,22 @@ AudioViz.Visualizer.prototype.start = function() {
 AudioViz.Visualizer.prototype.create3DEnv = function() {
   
   // camera
-  this.scene = new THREE.Scene();
 	this.camera = new THREE.PerspectiveCamera( 60, this.width / this.height, 1, 100000 );
-	this.camera.position.z = 200;
+	this.camera.position.z = this.cameraDistance ;
+  
+  // scene
+  this.scene = new THREE.Scene();
   
   // renderer
-  this.renderer = new THREE.WebGLRenderer();
+  this.renderer = new THREE.WebGLRenderer( { antialias: true } );
   this.renderer.setSize(this.width, this.height);
-	this.renderer.autoClear = false;
   this.domEl.append(this.renderer.domElement);
 	
+  // light
+  var light = new THREE.PointLight( 0xFFFFFF, 1, 0 );
+  light.position.set( 0, 0, 25 );
+  this.scene.add( light );
+  
   // skybox
 	var textureCube = THREE.ImageUtils.loadTextureCube([
     '/images/skybox/posx.jpg',
@@ -56,17 +68,17 @@ AudioViz.Visualizer.prototype.create3DEnv = function() {
   // sphere and material
   this.mirroredMeshes = [];
   var mirrorMaterial = new THREE.MeshBasicMaterial({ envMap: this.cubeCamera.renderTarget });
-    
-	this.group = new THREE.Object3D();
-	this.scene.add(this.group);
 
   this.sphereMesh = new THREE.Mesh(new THREE.SphereGeometry(20, 60, 40), mirrorMaterial);
-	this.group.add(this.sphereMesh);
+	this.scene.add(this.sphereMesh);
+  
+  // spectrum
+  this.group = new THREE.Object3D();
+	this.scene.add(this.group);
   
 	var angle = (Math.PI * 2) / (this.resolution * 2);
   for(var i = 0; i < this.resolution * 2; i++){
-	  //var mesh = new THREE.Mesh(new THREE.SphereGeometry(10, 60, 40), mirrorMaterial);
-    var mesh = new THREE.Mesh(new THREE.CubeGeometry(5, 5, 5), mirrorMaterial);
+    var mesh = new THREE.Mesh(new THREE.CubeGeometry(5, 5, 5), mirrorMaterial );
     mesh.angle = (i * angle) - (Math.PI / 2);
     mesh.position.x = Math.cos(mesh.angle) * 40;
     mesh.position.y = Math.sin(mesh.angle) * 40;
@@ -76,18 +88,14 @@ AudioViz.Visualizer.prototype.create3DEnv = function() {
 	  this.group.add(mesh);
   }
   
-  // light
-  var pointLight = new THREE.PointLight(0xFFFFFF);
-	pointLight.position.z = 3200;
-  this.scene.add(pointLight);
-  
+  // window resize
   var that = this;
   window.addEventListener('resize', function(e){
 	  that.onWindowResized(e);
   }, false );
-  
 	this.onWindowResized(null);
   
+  // redner
   this.renderLoop();
 }
 
@@ -103,8 +111,38 @@ AudioViz.Visualizer.prototype.renderLoop = function() {
 
 AudioViz.Visualizer.prototype.render = function() {
   
+  this.updateToAudio();
   
+  // move camera
+  this.lon += 0.1;
+  this.lat = Math.max(-85, Math.min(85, this.lat));
+	this.phi = THREE.Math.degToRad(90 - this.lat);
+	this.theta = THREE.Math.degToRad(this.lon);
+  
+	this.camera.position.x = this.cameraDistance * Math.sin(this.phi) * Math.cos(this.theta);
+	this.camera.position.y = this.cameraDistance * Math.cos(this.phi);
+	this.camera.position.z = this.cameraDistance * Math.sin(this.phi) * Math.sin(this.theta);
+  this.camera.lookAt(this.scene.position);
+  
+  // move group
+  this.group.rotation.y = this.group.rotation.y + 0.005;
+  this.group.rotation.x = this.group.rotation.x + 0.005;
+
+  // update reflection
+  this.sphereMesh.visible = false; // off
+	this.cubeCamera.updateCubeMap( this.renderer, this.scene );
+  this.sphereMesh.visible = true; // on
+  
+  // render
+  this.renderer.render(this.scene, this.camera);
+};
+
+AudioViz.Visualizer.prototype.updateToAudio = function() {
+
+  // get byte data
   var byteData = this.audioTrack.getSpectrum();
+  
+  // apply resolution
   var mod = this.audioTrack.analyser.frequencyBinCount / this.resolution; 
   var v = 0;
   var newByteData = [];
@@ -117,6 +155,7 @@ AudioViz.Visualizer.prototype.render = function() {
     }
   }
   
+  // scale mesh's
   var scale;
   var mesh;
   var that = this;
@@ -125,32 +164,16 @@ AudioViz.Visualizer.prototype.render = function() {
 	$.each(newByteData, function(i, value){
     value = newByteData[i];
     totalAvg = totalAvg + value;
+    
     mesh = that.mirroredMeshes[i];
-    mesh.visible = false;
     mesh.scale.x = mesh.scale.y = mesh.scale.z = value > 0 ? 0.5 + value * 2 : 1;
       
     mesh = that.mirroredMeshes[that.resolution * 2 - i - 1];
-    mesh.visible = false;
     mesh.scale.x = mesh.scale.y = mesh.scale.z = value > 0 ? 0.5 + value * 2 : 1;
 	});
-  
-  this.sphereMesh.visible = false;
-  
+    
+  // scale center mesh
   this.sphereMesh.scale.x = this.sphereMesh.scale.y = this.sphereMesh.scale.z = 1 + (totalAvg / this.resolution);
-  
-	this.cubeCamera.updateCubeMap( this.renderer, this.scene );
-  
-  this.sphereMesh.visible = true;
-  
-	$.each(this.mirroredMeshes, function(i, mesh){
-    mesh.visible = true;
-	});
-  
-  this.group.rotation.x = this.group.rotation.x + 0.005;
-  this.group.rotation.y = this.group.rotation.y + 0.005;
-  //this.group.rotation.z = this.group.rotation.z + 0.015;
-  
-  this.renderer.render(this.scene, this.camera);
 };
 
 AudioViz.Visualizer.prototype.onWindowResized = function( event ) {
