@@ -7,14 +7,23 @@ AudioViz.Visualizer = function(el, audioTrack, userCam) {
   this.width = 500;
   this.resolution = 64;
   
-	this.lon = 0;
+	this.lon = 90;
 	this.lat = 0;
 	this.phi = 0;
-  
+  this.cubeLength= 1;
+  this.cubeWidth = 1;
   this.cameraDistance = 150;
 };
 
 AudioViz.Visualizer.prototype.start = function() {
+  
+  this.stats = new Stats();
+  this.stats.setMode(1); // 0: fps, 1: ms
+  this.stats.domElement.style.position = 'absolute';
+  this.stats.domElement.style.left = '0px';
+  this.stats.domElement.style.top = '0px';
+  document.body.appendChild(this.stats.domElement);
+  
   this.create3DEnv();
 };
 
@@ -39,12 +48,12 @@ AudioViz.Visualizer.prototype.create3DEnv = function() {
   
   // skybox
 	var textureCube = THREE.ImageUtils.loadTextureCube([
-    '/images/skybox/posx.jpg',
-    '/images/skybox/negx.jpg',
-    '/images/skybox/posy.jpg',
-    '/images/skybox/negy.jpg',
-    '/images/skybox/posz.jpg',
-    '/images/skybox/negz.jpg'
+    'images/skybox/posx.jpg',
+    'images/skybox/negx.jpg',
+    'images/skybox/posy.jpg',
+    'images/skybox/negy.jpg',
+    'images/skybox/posz.jpg',
+    'images/skybox/negz.jpg'
   ]);
 	var shader = THREE.ShaderLib['cube'];
 	shader.uniforms['tCube'].value = textureCube;
@@ -68,7 +77,7 @@ AudioViz.Visualizer.prototype.create3DEnv = function() {
   // sphere and material
   this.mirroredMeshes = [];
   var mirrorMaterial = new THREE.MeshBasicMaterial({ envMap: this.cubeCamera.renderTarget });
-
+  var wireMaterial = new THREE.MeshBasicMaterial({ color: 0xb7ff00, wireframe: true });
   this.sphereMesh = new THREE.Mesh(new THREE.SphereGeometry(20, 60, 40), mirrorMaterial);
 	this.scene.add(this.sphereMesh);
   
@@ -78,15 +87,43 @@ AudioViz.Visualizer.prototype.create3DEnv = function() {
   
 	var angle = (Math.PI * 2) / (this.resolution * 2);
   for(var i = 0; i < this.resolution * 2; i++){
-    var mesh = new THREE.Mesh(new THREE.CubeGeometry(5, 1, 5), mirrorMaterial );
-    mesh.angle = (i * angle) - (Math.PI / 2);
+    var mesh = new THREE.Mesh(new THREE.CubeGeometry(this.cubeLength, this.cubeWidth, 0.5), mirrorMaterial );
+    mesh.angle = (i * angle) - (Math.PI / 2) + Math.PI;
     mesh.position.x = Math.cos(mesh.angle) * 35;
     mesh.position.y = Math.sin(mesh.angle) * 35;
     mesh.position.z = 0;
 		mesh.rotation.z = mesh.angle
+    
     this.mirroredMeshes.push(mesh);
 	  this.group.add(mesh);
   }
+  
+  // particles
+  this.particles = new THREE.Geometry();
+  var pMaterial = new THREE.ParticleBasicMaterial({
+    color: 0xFFFFFF,
+    size: 1,
+    map: THREE.ImageUtils.loadTexture('images/particle.png'),
+    blending: THREE.AdditiveBlending,
+    transparent: true
+  });
+  
+  for(var i = 0; i < 300 * 2; i++){
+    var pX = Math.random() * 200 - 100;
+    var pY = Math.random() * 200 - 100;
+    var pZ = Math.random() * 200 - 100;
+    
+    var particle = new THREE.Vector3(pX, pY, pZ);
+    particle.velocity = new THREE.Vector3(0, -0.2, 0);  
+    particle.setLength(particle.length());
+    this.particles.vertices.push(particle);
+  }
+  
+  // create the particle system
+  this.particleSystem = new THREE.ParticleSystem(this.particles,  pMaterial);
+  this.particleSystem.sortParticles = true;
+  this.scene.add(this.particleSystem);
+  
   
   // window resize
   var that = this;
@@ -100,6 +137,8 @@ AudioViz.Visualizer.prototype.create3DEnv = function() {
 }
 
 AudioViz.Visualizer.prototype.renderLoop = function() {
+
+  this.stats.begin();
   
   this.render();
   
@@ -107,18 +146,21 @@ AudioViz.Visualizer.prototype.renderLoop = function() {
   window.requestAnimationFrame(function(){
     that.renderLoop();
   });
+
+  this.stats.end();
 };
 
 AudioViz.Visualizer.prototype.render = function() {
   
   this.updateToAudio();
   
+  var that = this;
+  
   // move camera
   this.lon += 0.1;
   this.lat = Math.max(-85, Math.min(85, this.lat));
 	this.phi = THREE.Math.degToRad(90 - this.lat);
 	this.theta = THREE.Math.degToRad(this.lon);
-  
 	this.camera.position.x = this.cameraDistance * Math.sin(this.phi) * Math.cos(this.theta);
 	this.camera.position.y = this.cameraDistance * Math.cos(this.phi);
 	this.camera.position.z = this.cameraDistance * Math.sin(this.phi) * Math.sin(this.theta);
@@ -127,7 +169,14 @@ AudioViz.Visualizer.prototype.render = function() {
   // move group
   this.group.rotation.y = this.group.rotation.y - 0.005;
   this.group.rotation.x = this.group.rotation.x - 0.005;
-
+  
+  // move particles
+  $.each(this.particles.vertices, function(i, particle){
+    if(particle.y < -100) { particle.y = 100; }
+    particle.add(particle.velocity);
+  });
+  this.particleSystem.geometry.__dirtyVertices = true;
+  
   // update reflection
   this.sphereMesh.visible = false; // off
 	this.cubeCamera.updateCubeMap( this.renderer, this.scene );
@@ -157,19 +206,21 @@ AudioViz.Visualizer.prototype.updateToAudio = function() {
   
   // scale mesh's
   var scale;
-  var mesh;
+  var mesh1;
+  var mesh2;
   var that = this;
   var value;
   var totalAvg = 0;
+  var vIndex = 3;
 	$.each(newByteData, function(i, value){
     value = newByteData[i];
     totalAvg = totalAvg + value;
-    
-    mesh = that.mirroredMeshes[i];
-    mesh.scale.x = mesh.scale.y = mesh.scale.z = value > 0 ? 0.5 + value * 2 : 1;
-      
-    mesh = that.mirroredMeshes[that.resolution * 2 - i - 1];
-    mesh.scale.x = mesh.scale.y = mesh.scale.z = value > 0 ? 0.5 + value * 2 : 1;
+    value = value > 0 ? that.cubeLength + value * 20 : that.cubeLength;
+    mesh1 = that.mirroredMeshes[i];
+    mesh2 = that.mirroredMeshes[that.resolution * 2 - i - 1];
+    mesh1.geometry.vertices[0].x = mesh1.geometry.vertices[1].x = mesh1.geometry.vertices[2].x = mesh1.geometry.vertices[3].x = value;
+    mesh2.geometry.vertices[0].x = mesh2.geometry.vertices[1].x = mesh2.geometry.vertices[2].x = mesh2.geometry.vertices[3].x = value;
+    mesh1.geometry.verticesNeedUpdate = mesh2.geometry.verticesNeedUpdate = true;
 	});
     
   // scale center mesh

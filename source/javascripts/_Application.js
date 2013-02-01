@@ -15,7 +15,7 @@ AudioViz.App.prototype.init = function() {
   this.audioTrack.autoPlay = true;
   
   this.audioTrack.events.add(AudioViz.Events.LOADED, this.audioLoaded, this);
-  this.audioTrack.load('/audio/music.mp3');
+  this.audioTrack.load('audio/music.mp3');
 };
 
 AudioViz.App.prototype.audioLoaded = function() {
